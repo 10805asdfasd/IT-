@@ -351,65 +351,34 @@ class Enderman(Entity):
         self.image = surf
 
     def update(self, player):
-        # [추가됨] 부모 클래스(Entity)의 update를 호출해야 넉백과 쿨다운(붉은색)이 작동함
+        # 1. 부모 업데이트 (여기서 self.death_tilt가 계산됨)
         super().update()
 
-        # 애니메이션 틱 증가
+        # 애니메이션 틱 계산
         self.anim_tick += 1
         arm_offset = int(math.sin(self.anim_tick * 0.16) * 3)
         leg_offset = int(math.sin(self.anim_tick * 0.18) * 2)
 
-        # [추가됨] 데미지를 입는 중(경직)이거나 죽었으면 추격하지 않음
-        if self.damage_cooldown > 0 or self.is_dead:
-            self._redraw(arm_offset, leg_offset)
-            return
-
-        # 이동: 플레이어 쪽으로 자연스럽게 접근
-        player_pos = pygame.math.Vector2(player.rect.center)
-        enderman_pos = pygame.math.Vector2(self.rect.center)
-        direction = (player_pos - enderman_pos)
-        
-        # 호박을 쓰고 있으면 추격하지 않음
-        if player.is_wearing_pumpkin:
-            direction = pygame.math.Vector2(0, 0)
-
-        if direction.length() > 0:
-            direction = direction.normalize()
-            
-            # [수정됨] X축 이동 후 플레이어와 충돌 체크
-            self.rect.x += direction.x * self.speed
-            if self.rect.colliderect(player.rect):
-                self.rect.x -= direction.x * self.speed
-
-            # [수정됨] Y축 이동 후 플레이어와 충돌 체크
-            self.rect.y += direction.y * self.speed
-            if self.rect.colliderect(player.rect):
-                self.rect.y -= direction.y * self.speed
-
-            # 방향에 따라 'side' 또는 'front' 포즈 결정
-            if abs(direction.x) > abs(direction.y):
-                self.pose = 'side'
-                self.facing_right = direction.x > 0
-            else:
-                self.pose = 'front'
-        else:
-            self.pose = 'front'
-
-        # 팔/다리 흔들림 반영
-        self._redraw(arm_offset, leg_offset)
-
-        # 측면 포즈일 때만 좌우 반전 적용
-        if self.pose == 'side' and not self.facing_right:
-            self.image = pygame.transform.flip(self.image, True, False)
-        
-        # [중요] 기존 코드의 사망 처리 로직 유지 (Enderman 클래스 하단에 있던 부분)
+        # ----------------------------------------------------
+        # [수정됨] 사망 처리 로직을 가장 먼저 수행합니다.
+        # ----------------------------------------------------
         if self.is_dead:
-             if self.death_timer <= 0:
-                # 드롭 아이템 생성 및 파티클 로직
+            # 1. 기본 그림 그리기
+            self._redraw(arm_offset, leg_offset)
+            
+            # 2. 기울기(death_tilt) 적용하여 이미지 회전시키기
+            #    (중심축 기준 회전 시 위치가 틀어질 수 있어 rect 중심 보정)
+            old_center = self.rect.center
+            self.image = pygame.transform.rotate(self.image, -self.death_tilt)
+            self.rect = self.image.get_rect(center=old_center)
+
+            # 3. 사망 타이머 종료 시 아이템 드롭 및 소멸
+            if self.death_timer <= 0:
                 drop = DroppedItem(self.drop_item, self.rect.centerx, self.rect.centery)
                 all_sprites_list.add(drop)
                 dropped_items.add(drop)
                 
+                # 사망 이펙트 (파티클)
                 for _ in range(8):
                     angle = random.uniform(0, math.tau)
                     speed = random.uniform(1, 3)
@@ -418,16 +387,65 @@ class Enderman(Entity):
                     particles.append(Particle(self.rect.centerx, self.rect.centery, vx, vy, random.randint(20, 40), random.randint(1, 2), (255, 255, 255)))
                 
                 self.kill()
-                return
+            
+            # 죽었으면 아래 이동 코드는 실행하지 않고 리턴
+            return
 
-        # 파티클 생성 타이머
-        if not self.is_dead:
-            self.particle_timer += 1
-            if self.particle_timer >= 6:
-                self.particle_timer = 0
-                if random.random() < 0.8:
-                    spawn_enderman_particle(self.rect.centerx + random.randint(-8, 8),
-                                            self.rect.centery + random.randint(-20, 20))
+        # ----------------------------------------------------
+        # [수정됨] 피격 경직 처리
+        # ----------------------------------------------------
+        if self.damage_cooldown > 0:
+            self._redraw(arm_offset, leg_offset)
+            return
+
+        # ----------------------------------------------------
+        # 이동 로직 (살아있고 경직이 아닐 때만 실행)
+        # ----------------------------------------------------
+        player_pos = pygame.math.Vector2(player.rect.center)
+        enderman_pos = pygame.math.Vector2(self.rect.center)
+        direction = (player_pos - enderman_pos)
+        
+        # 호박 착용 시 추격 중지
+        if player.is_wearing_pumpkin:
+            direction = pygame.math.Vector2(0, 0)
+
+        if direction.length() > 0:
+            direction = direction.normalize()
+            
+            # X축 이동
+            self.rect.x += direction.x * self.speed
+            if self.rect.colliderect(player.rect):
+                self.rect.x -= direction.x * self.speed
+
+            # Y축 이동
+            self.rect.y += direction.y * self.speed
+            if self.rect.colliderect(player.rect):
+                self.rect.y -= direction.y * self.speed
+
+            # 방향에 따른 포즈 설정
+            if abs(direction.x) > abs(direction.y):
+                self.pose = 'side'
+                self.facing_right = direction.x > 0
+            else:
+                self.pose = 'front'
+        else:
+            self.pose = 'front'
+
+        # 최종 그리기
+        self._redraw(arm_offset, leg_offset)
+
+        # 측면 반전
+        if self.pose == 'side' and not self.facing_right:
+            self.image = pygame.transform.flip(self.image, True, False)
+
+        # 생존 중 파티클 생성
+        self.particle_timer += 1
+        if self.particle_timer >= 6:
+            self.particle_timer = 0
+            if random.random() < 0.8:
+                spawn_enderman_particle(self.rect.centerx + random.randint(-8, 8),
+                                        self.rect.centery + random.randint(-20, 20))
+
 
 class Particle:
     def __init__(self, x, y, vx, vy, life, size, color):
