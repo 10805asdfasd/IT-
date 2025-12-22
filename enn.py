@@ -14,6 +14,8 @@ width, height = 640, 480
 current_message = "조각난 호박을 착용했습니다!"
 message_timer = 0
 night_message_shown = False
+last_attack_time = 0  # 마지막 공격 시간 (초 단위)
+ATTACK_DELAY = 0.9  # 공격 딜레이
 
 inventory = {"도끼" : 1, "가위": 1, "목재": 0, "호박": 0, "조각난 호박": 0, "보트": 0}
 item_order = ["도끼", "가위", "목재", "호박", "조각난 호박", "보트"] 
@@ -123,13 +125,80 @@ class Obstacle(pygame.sprite.Sprite):
             pygame.draw.circle(self.image, (100, 255, 100), (15, 15), 15)
         return self.hp <= 0
 
+class DroppedItem(pygame.sprite.Sprite):
+    def __init__(self, item_name, x, y):
+        super().__init__()
+        self.item_name = item_name
+        self.image = pygame.Surface([20, 20], pygame.SRCALPHA)
+        
+        if item_name == "ender_eye":
+            # ender_eye.png 로드 (없으면 기본 원 그리기)
+            try:
+                self.image = pygame.image.load("ender_eye.png")
+                self.image = pygame.transform.scale(self.image, [20, 20])
+            except:
+                # 파일 없으면 기본 자주색 원 그리기
+                pygame.draw.circle(self.image, (160, 80, 200), (10, 10), 8)
+        elif item_name == "ender_pearl":
+            pygame.draw.circle(self.image, (100, 200, 200), (10, 10), 8)
+        else:
+            # 기본 드롭 아이템 (흰색 사각형)
+            pygame.draw.rect(self.image, (200, 200, 200), [2, 2, 16, 16])
+        
+        self.rect = self.image.get_rect(center=(x, y))
+        self.vel = pygame.math.Vector2(random.uniform(-2, 2), random.uniform(-3, -0.5))
+    
+    def update(self):
+        self.vel.y += 0.15  # 중력
+        self.rect.x += self.vel.x
+        self.rect.y += self.vel.y
+
+
 class Entity(pygame.sprite.Sprite):
     def __init__(self, health_point, speed, drop_item, stance):
         super().__init__()
         self.health_point = health_point
+        self.max_health = health_point
         self.speed = speed
         self.drop_item = drop_item
         self.stance = stance
+        self.damage_cooldown = 0  # 피격 후 경직 시간
+        self.knockback_vel = pygame.math.Vector2(0, 0)
+        self.is_dead = False
+        self.death_timer = 0
+        self.death_tilt = 0  # 쓰러지는 각도
+    
+    def take_damage(self, amount, direction_from_x):
+        """데미지를 입고 넉백과 피격 효과 적용"""
+        if self.is_dead:
+            return
+        
+        self.health_point -= amount
+        self.damage_cooldown = 15  # 0.25초 경직
+        
+        # 넉백 방향 (반대 방향)
+        knockback_direction = -1 if direction_from_x < self.rect.centerx else 1
+        self.knockback_vel.x = knockback_direction * 6
+        
+        if self.health_point <= 0:
+            self.is_dead = True
+            self.death_timer = 30  # 사망 애니메이션 0.5초
+    
+    def update(self):
+        """기본 엔티티 업데이트 (피격 효과, 넉백, 사망 처리)"""
+        if self.damage_cooldown > 0:
+            self.damage_cooldown -= 1
+        
+        # 넉백 감소
+        self.knockback_vel.x *= 0.85
+        self.rect.x += self.knockback_vel.x
+        
+        # 사망 상태
+        if self.is_dead:
+            self.death_timer -= 1
+            self.death_tilt = min(90, (30 - self.death_timer) * 6)  # 쓰러지는 각도
+
+
 
 
 class Enderman(Entity):
@@ -137,8 +206,8 @@ class Enderman(Entity):
         # 엔티티 속성
         super().__init__(
             health_point=40,
-            speed=8,
-            drop_item="ender_pearl",
+            speed=4,
+            drop_item="ender_eye",
             stance=1
         )
 
@@ -174,9 +243,19 @@ class Enderman(Entity):
         """이미지를 재생성합니다. arm_offset은 팔 흔들림(픽셀), leg_offset은 다리 분리/흔들림"""
         surf = pygame.Surface([30, 80], pygame.SRCALPHA)
 
+        # 피격 효과 (손상 시 붉은 색으로 변함)
+        tint_alpha = 0
+        if self.damage_cooldown > 0:
+            tint_alpha = int(150 * (self.damage_cooldown / 15))  # 최대 150 알파
+
         # 머리: 작은 정육면체 (상단, 약 14px)
-        pygame.draw.rect(surf, (12, 12, 12), [7, 0, 16, 14])
-        pygame.draw.rect(surf, (24, 24, 24), [8, 1, 14, 12])
+        head_color = (12, 12, 12)
+        if self.damage_cooldown > 0:
+            head_color = (min(255, 12 + 100), 12, 12)  # 붉은 색 오버레이
+        
+        pygame.draw.rect(surf, head_color, [7, 0, 16, 14])
+        pygame.draw.rect(surf, (min(255, 24 + 50), 24, 24) if self.damage_cooldown > 0 else (24, 24, 24), [8, 1, 14, 12])
+        
         # 머리 텍스처 (작은 픽셀)
         for hx in range(9, 21, 5):
             for hy in range(2, 7, 5):
@@ -196,7 +275,8 @@ class Enderman(Entity):
 
             # 몸통: 짧은 검은 직사각형 (약 16px)
             torso_x, torso_y, torso_w, torso_h = 9, 16, 12, 16
-            pygame.draw.rect(surf, (10, 10, 10), [torso_x, torso_y, torso_w, torso_h])
+            torso_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
+            pygame.draw.rect(surf, torso_color, [torso_x, torso_y, torso_w, torso_h])
             # 몸통 텍스처
             torso_spots = [(10, 19), (14, 23), (12, 28)]
             for sx, sy in torso_spots:
@@ -205,8 +285,9 @@ class Enderman(Entity):
             # 팔: 앞모습에서 팔은 옆으로 조금 흔들림
             arm_h = 60
             arm_start_y = 16
-            pygame.draw.rect(surf, (10, 10, 10), [0 + arm_offset, arm_start_y, 3, arm_h])
-            pygame.draw.rect(surf, (10, 10, 10), [27 - arm_offset, arm_start_y, 3, arm_h])
+            arm_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
+            pygame.draw.rect(surf, arm_color, [0 + arm_offset, arm_start_y, 3, arm_h])
+            pygame.draw.rect(surf, arm_color, [27 - arm_offset, arm_start_y, 3, arm_h])
             for ay in range(arm_start_y, arm_start_y + arm_h, 10):
                 pygame.draw.rect(surf, (3, 3, 3), [1 + arm_offset, ay, 2, 3])
                 pygame.draw.rect(surf, (3, 3, 3), [28 - arm_offset, ay, 2, 3])
@@ -214,8 +295,9 @@ class Enderman(Entity):
             # 다리: 앞모습에서 좌우로 약간 벌어짐
             leg_h = 48
             leg_start_y = torso_y + torso_h
-            pygame.draw.rect(surf, (10, 10, 10), [9 - leg_offset, leg_start_y, 4, leg_h])
-            pygame.draw.rect(surf, (10, 10, 10), [17 + leg_offset, leg_start_y, 4, leg_h])
+            leg_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
+            pygame.draw.rect(surf, leg_color, [9 - leg_offset, leg_start_y, 4, leg_h])
+            pygame.draw.rect(surf, leg_color, [17 + leg_offset, leg_start_y, 4, leg_h])
             pygame.draw.rect(surf, (3, 3, 3), [9 - leg_offset, leg_start_y + 12, 4, 2])
             pygame.draw.rect(surf, (3, 3, 3), [17 + leg_offset, leg_start_y + 14, 4, 2])
 
@@ -229,23 +311,26 @@ class Enderman(Entity):
 
             # 몸통: 옆에서 보이는 얇은 실루엣
             torso_x, torso_y, torso_w, torso_h = 12, 16, 8, 18
-            pygame.draw.rect(surf, (10, 10, 10), [torso_x, torso_y, torso_w, torso_h])
+            torso_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
+            pygame.draw.rect(surf, torso_color, [torso_x, torso_y, torso_w, torso_h])
 
             # 팔: 어깨에 붙어 있고 대각선으로 내려옴
             arm_h = 44
             shoulder_x = torso_x + torso_w  # 오른쪽 어깨 쪽에서 내리는 형태
             arm_start_y = torso_y
+            arm_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
             # 그리기: 대각선 모양을 단순화해 여러 세로박스로 표현
             for i in range(arm_h // 6):
                 dy = i * 6
                 dx = int(i * 0.6) + int(arm_offset * 0.3)
-                pygame.draw.rect(surf, (10, 10, 10), [shoulder_x + dx, arm_start_y + dy, 4, 5])
+                pygame.draw.rect(surf, arm_color, [shoulder_x + dx, arm_start_y + dy, 4, 5])
                 pygame.draw.rect(surf, (3, 3, 3), [shoulder_x + dx + 1, arm_start_y + dy + 1, 2, 2])
 
             # 다리: 한쪽이 더 보이는 옆모습
             leg_h = 48
             leg_start_y = torso_y + torso_h
-            pygame.draw.rect(surf, (10, 10, 10), [torso_x + 1 + leg_offset, leg_start_y, 6, leg_h])
+            leg_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
+            pygame.draw.rect(surf, leg_color, [torso_x + 1 + leg_offset, leg_start_y, 6, leg_h])
             pygame.draw.rect(surf, (3, 3, 3), [torso_x + 1 + leg_offset, leg_start_y + 14, 6, 2])
 
         # 어깨/허리 음영 (공통)
@@ -286,13 +371,36 @@ class Enderman(Entity):
         if self.pose == 'side' and not self.facing_right:
             self.image = pygame.transform.flip(self.image, True, False)
 
-        # 파티클 생성 타이머
-        self.particle_timer += 1
-        if self.particle_timer >= 6:
-            self.particle_timer = 0
-            if random.random() < 0.8:
-                spawn_enderman_particle(self.rect.centerx + random.randint(-8, 8),
-                                        self.rect.centery + random.randint(-20, 20))
+        # 사망 처리
+        if self.is_dead:
+            if self.death_timer <= 0:
+                # 드롭 아이템 생성
+                drop = DroppedItem(self.drop_item, self.rect.centerx, self.rect.centery)
+                all_sprites_list.add(drop)
+                dropped_items.add(drop)
+                
+                # 흰 파티클 생성 (사망 이펙트)
+                for _ in range(8):
+                    angle = random.uniform(0, math.tau)
+                    speed = random.uniform(1, 3)
+                    vx = math.cos(angle) * speed
+                    vy = math.sin(angle) * speed
+                    life = random.randint(20, 40)
+                    size = random.randint(1, 2)
+                    particles.append(Particle(self.rect.centerx, self.rect.centery, vx, vy, life, size, (255, 255, 255)))
+                
+                # 엔더맨 제거
+                self.kill()
+                return
+
+        # 파티클 생성 타이머 (살아있을 때만)
+        if not self.is_dead:
+            self.particle_timer += 1
+            if self.particle_timer >= 6:
+                self.particle_timer = 0
+                if random.random() < 0.8:
+                    spawn_enderman_particle(self.rect.centerx + random.randint(-8, 8),
+                                            self.rect.centery + random.randint(-20, 20))
 
 
 class Particle:
@@ -349,6 +457,7 @@ class CraftingTable(pygame.sprite.Sprite):
 all_sprites_list = pygame.sprite.Group()
 obstacles = pygame.sprite.Group()
 endermen = pygame.sprite.Group()
+dropped_items = pygame.sprite.Group()
 particles = []  # global particle list for enderman effects
 
 player = Player((167, 255, 100), 30, 30)
@@ -372,6 +481,7 @@ def reset_game():
     all_sprites_list.empty()
     obstacles.empty()
     endermen.empty()
+    dropped_items.empty()
     
     # 3. 플레이어 재생성
     player.rect.center = (200, 300)
@@ -591,6 +701,29 @@ while running:
                                     break
                             
             elif event.button == 1:
+                 # 엔티티(엔더맨) 공격 로직
+                 # 공격 데미지 계산 (선택 아이템에 따라)
+                 attack_damage = 1  # 기본값 (빈 칸)
+                 is_axe_attack = item_order[selected_slot] == "도끼"
+                 if is_axe_attack:
+                     attack_damage = 9
+                 
+                 # 도끼로 공격할 때만 딜레이 확인
+                 current_time = pygame.time.get_ticks() / 1000.0
+                 if is_axe_attack:
+                     if current_time - last_attack_time >= ATTACK_DELAY:
+                         last_attack_time = current_time
+                         # 엔더맨 공격
+                         for enderman in endermen:
+                             if enderman.rect.collidepoint(mouse_pos):
+                                 enderman.take_damage(attack_damage, mouse_pos[0])
+                 else:
+                     # 맨손 공격은 딜레이 없음
+                     for enderman in endermen:
+                         if enderman.rect.collidepoint(mouse_pos):
+                             enderman.take_damage(attack_damage, mouse_pos[0])
+                 
+                 # 도끼로 장애물 채집
                  if not crafting_open and item_order[selected_slot] == "도끼":
                     INTERACTION_RANGE = 100
                     for obj in obstacles:
@@ -641,9 +774,14 @@ while running:
                 p.update()
                 if p.life <= 0:
                     particles.remove(p)
+            
+            # 드롭된 아이템 업데이트
+            for item in dropped_items:
+                item.update()
 
     screen.fill(grass)
     all_sprites_list.draw(screen)
+    dropped_items.draw(screen)
 
     if is_night:
         night_overlay = pygame.Surface((width, height), pygame.SRCALPHA)
