@@ -11,14 +11,14 @@ orange = (255, 165, 0)
 dark_green = (0, 100, 0)
 yellow = (255, 255, 0)
 width, height = 640, 480
-current_message = "조각난 호박을 착용했습니다!"
+current_message = "조각된 호박을 착용했습니다!"
 message_timer = 0
 night_message_shown = False
 last_attack_time = 0  # 마지막 공격 시간 (초 단위)
 ATTACK_DELAY = 0.9  # 공격 딜레이
 
-inventory = {"도끼" : 1, "가위": 1, "목재": 0, "호박": 0, "조각난 호박": 0, "보트": 0}
-item_order = ["도끼", "가위", "목재", "호박", "조각난 호박", "보트"] 
+inventory = {"도끼" : 1, "가위": 1, "목재": 0, "호박": 0, "조각된 호박": 0, "보트": 0}
+item_order = ["도끼", "가위", "목재", "호박", "조각된 호박", "보트"] 
 selected_slot = 0
 crafting_open = False
 
@@ -41,7 +41,7 @@ def draw_item_icon(screen, item_name, rect):
         pygame.draw.circle(screen, (200, 200, 200), (rect.centerx+5, rect.centery+5), 5, 2)
         pygame.draw.line(screen, (200, 200, 200), (rect.centerx-3, rect.centery+2), (rect.centerx+8, rect.centery-8), 3)
         pygame.draw.line(screen, (200, 200, 200), (rect.centerx+3, rect.centery+2), (rect.centerx-8, rect.centery-8), 3)
-    elif item_name == "조각난 호박":
+    elif item_name == "조각된 호박":
         # 기본 호박 모양에 눈/입 추가
         pygame.draw.circle(screen, orange, rect.center, 12)
         # 검은색 눈과 입
@@ -69,15 +69,26 @@ class Player(pygame.sprite.Sprite):
         self.speed = 4
         self.is_wearing_pumpkin = False # 호박 착용 여부
 
-    def update(self, keys, obstacles):
+    def update(self, keys, obstacles, endermen):
         old_x, old_y = self.rect.x, self.rect.y
+        # X축 이동 및 충돌 검사
         if keys[K_a]: self.rect.x -= self.speed
         if keys[K_d]: self.rect.x += self.speed
-        if self.rect.left < 0 or self.rect.right > width or pygame.sprite.spritecollideany(self, obstacles):
+        
+        # 장애물 또는 엔더맨과 충돌 시 위치 복구
+        if (self.rect.left < 0 or self.rect.right > width or 
+            pygame.sprite.spritecollideany(self, obstacles) or 
+            pygame.sprite.spritecollideany(self, endermen)):
             self.rect.x = old_x
+            
+        # Y축 이동 및 충돌 검사
         if keys[K_w]: self.rect.y -= self.speed
         if keys[K_s]: self.rect.y += self.speed
-        if self.rect.top < 0 or self.rect.bottom > height or pygame.sprite.spritecollideany(self, obstacles):
+        
+        # 장애물 또는 엔더맨과 충돌 시 위치 복구
+        if (self.rect.top < 0 or self.rect.bottom > height or 
+            pygame.sprite.spritecollideany(self, obstacles) or 
+            pygame.sprite.spritecollideany(self, endermen)):
             self.rect.y = old_y
             
     def update_appearance(self):
@@ -248,7 +259,7 @@ class Enderman(Entity):
         if self.damage_cooldown > 0:
             tint_alpha = int(150 * (self.damage_cooldown / 15))  # 최대 150 알파
 
-        # 머리: 작은 정육면체 (상단, 약 14px)
+        # 머리
         head_color = (12, 12, 12)
         if self.damage_cooldown > 0:
             head_color = (min(255, 12 + 100), 12, 12)  # 붉은 색 오버레이
@@ -256,13 +267,13 @@ class Enderman(Entity):
         pygame.draw.rect(surf, head_color, [7, 0, 16, 14])
         pygame.draw.rect(surf, (min(255, 24 + 50), 24, 24) if self.damage_cooldown > 0 else (24, 24, 24), [8, 1, 14, 12])
         
-        # 머리 텍스처 (작은 픽셀)
+        # 머리 텍스처
         for hx in range(9, 21, 5):
             for hy in range(2, 7, 5):
                 pygame.draw.rect(surf, (4, 4, 4), [hx, hy, 2, 2])
 
         if self.pose == 'front':
-            # 눈: 앞모습 (연한 핑크 양옆, 중앙 진한 스트립)
+            # 눈
             pygame.draw.rect(surf, (255, 210, 230), [7, 6, 6, 3])  # 왼쪽 베이스
             pygame.draw.rect(surf, (200, 50, 200), [9, 6, 2, 3])   # 왼쪽 중앙
             pygame.draw.rect(surf, (255, 230, 240), [8, 6, 1, 1])  # 하이라이트
@@ -270,19 +281,19 @@ class Enderman(Entity):
             pygame.draw.rect(surf, (200, 50, 200), [19, 6, 2, 3])  # 오른쪽 중앙
             pygame.draw.rect(surf, (255, 230, 240), [19, 6, 1, 1]) # 하이라이트
 
-            # 목: 매우 짧은 연결부
+            # 목
             pygame.draw.rect(surf, (16, 16, 16), [8, 14, 14, 2])
 
-            # 몸통: 짧은 검은 직사각형 (약 16px)
+            # 몸통
             torso_x, torso_y, torso_w, torso_h = 9, 16, 12, 16
             torso_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
             pygame.draw.rect(surf, torso_color, [torso_x, torso_y, torso_w, torso_h])
-            # 몸통 텍스처
+            # 몸통
             torso_spots = [(10, 19), (14, 23), (12, 28)]
             for sx, sy in torso_spots:
                 pygame.draw.rect(surf, (2, 2, 2), [sx, sy, 2, 2])
 
-            # 팔: 앞모습에서 팔은 옆으로 조금 흔들림
+            # 팔
             arm_h = 60
             arm_start_y = 16
             arm_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
@@ -292,7 +303,7 @@ class Enderman(Entity):
                 pygame.draw.rect(surf, (3, 3, 3), [1 + arm_offset, ay, 2, 3])
                 pygame.draw.rect(surf, (3, 3, 3), [28 - arm_offset, ay, 2, 3])
 
-            # 다리: 앞모습에서 좌우로 약간 벌어짐
+            # 다리
             leg_h = 48
             leg_start_y = torso_y + torso_h
             leg_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
@@ -302,31 +313,31 @@ class Enderman(Entity):
             pygame.draw.rect(surf, (3, 3, 3), [17 + leg_offset, leg_start_y + 14, 4, 2])
 
         else:  # side pose
-            # 눈: 측면에서는 얇은 수평 슬릿
+            # 눈
             pygame.draw.rect(surf, (255, 210, 230), [10, 6, 8, 3])
             pygame.draw.rect(surf, (200, 50, 200), [12, 6, 4, 3])
 
-            # 목/어깨: 살짝 돌려진 느낌
+            # 목/어깨
             pygame.draw.rect(surf, (16, 16, 16), [10, 14, 12, 3])
 
-            # 몸통: 옆에서 보이는 얇은 실루엣
+            # 몸통
             torso_x, torso_y, torso_w, torso_h = 12, 16, 8, 18
             torso_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
             pygame.draw.rect(surf, torso_color, [torso_x, torso_y, torso_w, torso_h])
 
-            # 팔: 어깨에 붙어 있고 대각선으로 내려옴
+            # 팔
             arm_h = 44
             shoulder_x = torso_x + torso_w  # 오른쪽 어깨 쪽에서 내리는 형태
             arm_start_y = torso_y
             arm_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
-            # 그리기: 대각선 모양을 단순화해 여러 세로박스로 표현
+            # 그리기
             for i in range(arm_h // 6):
                 dy = i * 6
                 dx = int(i * 0.6) + int(arm_offset * 0.3)
                 pygame.draw.rect(surf, arm_color, [shoulder_x + dx, arm_start_y + dy, 4, 5])
                 pygame.draw.rect(surf, (3, 3, 3), [shoulder_x + dx + 1, arm_start_y + dy + 1, 2, 2])
 
-            # 다리: 한쪽이 더 보이는 옆모습
+            # 다리
             leg_h = 48
             leg_start_y = torso_y + torso_h
             leg_color = (min(255, 10 + 100), 10, 10) if self.damage_cooldown > 0 else (10, 10, 10)
@@ -340,19 +351,40 @@ class Enderman(Entity):
         self.image = surf
 
     def update(self, player):
+        # [추가됨] 부모 클래스(Entity)의 update를 호출해야 넉백과 쿨다운(붉은색)이 작동함
+        super().update()
+
         # 애니메이션 틱 증가
         self.anim_tick += 1
         arm_offset = int(math.sin(self.anim_tick * 0.16) * 3)
         leg_offset = int(math.sin(self.anim_tick * 0.18) * 2)
 
+        # [추가됨] 데미지를 입는 중(경직)이거나 죽었으면 추격하지 않음
+        if self.damage_cooldown > 0 or self.is_dead:
+            self._redraw(arm_offset, leg_offset)
+            return
+
         # 이동: 플레이어 쪽으로 자연스럽게 접근
         player_pos = pygame.math.Vector2(player.rect.center)
         enderman_pos = pygame.math.Vector2(self.rect.center)
         direction = (player_pos - enderman_pos)
+        
+        # 호박을 쓰고 있으면 추격하지 않음
+        if player.is_wearing_pumpkin:
+            direction = pygame.math.Vector2(0, 0)
+
         if direction.length() > 0:
             direction = direction.normalize()
+            
+            # [수정됨] X축 이동 후 플레이어와 충돌 체크
             self.rect.x += direction.x * self.speed
+            if self.rect.colliderect(player.rect):
+                self.rect.x -= direction.x * self.speed
+
+            # [수정됨] Y축 이동 후 플레이어와 충돌 체크
             self.rect.y += direction.y * self.speed
+            if self.rect.colliderect(player.rect):
+                self.rect.y -= direction.y * self.speed
 
             # 방향에 따라 'side' 또는 'front' 포즈 결정
             if abs(direction.x) > abs(direction.y):
@@ -361,39 +393,34 @@ class Enderman(Entity):
             else:
                 self.pose = 'front'
         else:
-            # 정지 또는 수직 이동이 아닌 경우 정면
             self.pose = 'front'
 
-        # 재렌더 (팔/다리 흔들림 반영)
+        # 팔/다리 흔들림 반영
         self._redraw(arm_offset, leg_offset)
 
-        # 측면 포즈일 때만 좌우 반전 적용 (정면 포즈는 항상 정면)
+        # 측면 포즈일 때만 좌우 반전 적용
         if self.pose == 'side' and not self.facing_right:
             self.image = pygame.transform.flip(self.image, True, False)
-
-        # 사망 처리
+        
+        # [중요] 기존 코드의 사망 처리 로직 유지 (Enderman 클래스 하단에 있던 부분)
         if self.is_dead:
-            if self.death_timer <= 0:
-                # 드롭 아이템 생성
+             if self.death_timer <= 0:
+                # 드롭 아이템 생성 및 파티클 로직
                 drop = DroppedItem(self.drop_item, self.rect.centerx, self.rect.centery)
                 all_sprites_list.add(drop)
                 dropped_items.add(drop)
                 
-                # 흰 파티클 생성 (사망 이펙트)
                 for _ in range(8):
                     angle = random.uniform(0, math.tau)
                     speed = random.uniform(1, 3)
                     vx = math.cos(angle) * speed
                     vy = math.sin(angle) * speed
-                    life = random.randint(20, 40)
-                    size = random.randint(1, 2)
-                    particles.append(Particle(self.rect.centerx, self.rect.centery, vx, vy, life, size, (255, 255, 255)))
+                    particles.append(Particle(self.rect.centerx, self.rect.centery, vx, vy, random.randint(20, 40), random.randint(1, 2), (255, 255, 255)))
                 
-                # 엔더맨 제거
                 self.kill()
                 return
 
-        # 파티클 생성 타이머 (살아있을 때만)
+        # 파티클 생성 타이머
         if not self.is_dead:
             self.particle_timer += 1
             if self.particle_timer >= 6:
@@ -401,7 +428,6 @@ class Enderman(Entity):
                 if random.random() < 0.8:
                     spawn_enderman_particle(self.rect.centerx + random.randint(-8, 8),
                                             self.rect.centery + random.randint(-20, 20))
-
 
 class Particle:
     def __init__(self, x, y, vx, vy, life, size, color):
@@ -414,7 +440,6 @@ class Particle:
 
     def update(self):
         self.pos += self.vel
-        # slight upward drift and damping
         self.vel.y -= 0.02
         self.vel *= 0.995
         self.life -= 1
@@ -429,7 +454,6 @@ class Particle:
 
 
 def spawn_enderman_particle(x, y):
-    # create a small cluster of particles for a glowy effect
     for _ in range(random.randint(1, 3)):
         angle = random.uniform(0, math.tau)
         speed = random.uniform(0.2, 1.0)
@@ -468,7 +492,7 @@ def reset_game():
     global inventory, selected_slot, crafting_open, boat_crafted, is_night, message_timer, show_tutorial, enderman_spawn_counter
     
     # 1. 변수 초기화
-    inventory = {"도끼": 1, "가위": 1, "목재": 0, "호박": 0, "조각난 호박": 0, "보트": 0}
+    inventory = {"도끼": 1, "가위": 1, "목재": 0, "호박": 0, "조각된 호박": 0, "보트": 0}
     selected_slot = 0
     crafting_open = False
     boat_crafted = False
@@ -477,7 +501,6 @@ def reset_game():
     show_tutorial = True # 재시작 시 튜토리얼부터 다시 보여줄지 선택
     enderman_spawn_counter = 0
     
-    # 2. 스프라이트 그룹 비우기
     all_sprites_list.empty()
     obstacles.empty()
     endermen.empty()
@@ -534,7 +557,6 @@ def draw_tutorial(screen, font):
         "[ ESC ] 키를 눌러 게임 시작"
     ]
 
-    # [수정] 시작 높이(start_y)와 줄 간격(line_spacing)
     start_y = 50 
     line_spacing = 30 
 
@@ -627,7 +649,7 @@ while running:
                 crafting_open = False
                 if boat_crafted and not is_night:
                     is_night = True
-                    boat_crafted = False # 한 번만 실행되도록 리셋
+                    boat_crafted = False
 
                     if not night_message_shown:
                         current_message = "밤이 되었습니다..."
@@ -647,43 +669,42 @@ while running:
             player_pos = pygame.math.Vector2(player.rect.center)
             
             if event.button == 3: 
-                # 1. 제작대 상호작용 체크
                 if craft_table.rect.collidepoint(mouse_pos):
                     dist = player_pos.distance_to(craft_table.rect.center)
                     if dist <= 100:
-                        if crafting_open: # 열려있으면 닫기
+                        if crafting_open:
                             crafting_open = False
-                            if boat_crafted: # 여기서도 체크!
+                            if boat_crafted:
                                 is_night = True
                                 message_timer = 90
                                 boat_crafted = False
-                        else: # 닫혀있으면 열기
+                        else:
                             crafting_open = True
                         continue
                     
                 elif (
                     not crafting_open
-                    and item_order[selected_slot] == "조각난 호박"
-                    and inventory["조각난 호박"] >0
+                    and item_order[selected_slot] == "조각된 호박"
+                    and inventory["조각된 호박"] >0
                     and not player.is_wearing_pumpkin
                 ):
-                    inventory["조각난 호박"] -= 1
+                    inventory["조각된 호박"] -= 1
                     player.is_wearing_pumpkin = True
                     player.update_appearance()
 
-                    current_message = "조각난 호박을 착용했습니다!"
+                    current_message = "조각된 호박을 착용했습니다!"
                     message_timer = 120
 
                     continue
                 elif (
                     not crafting_open
-                    and item_order[selected_slot] == "조각난 호박"
+                    and item_order[selected_slot] == "조각된 호박"
                     and player.is_wearing_pumpkin
                 ):
-                    inventory["조각난 호박"] += 1
+                    inventory["조각된 호박"] += 1
                     player.is_wearing_pumpkin = False
                     player.update_appearance()
-                    current_message = "조각난 호박을 벗었습니다!"
+                    current_message = "조각된 호박을 벗었습니다!"
                     message_timer = 120 #호박 벗기
                     continue                    
                         
@@ -691,13 +712,12 @@ while running:
                 # 2. 가위를 들고 호박 우클릭 (조각하기)
                 if item_order[selected_slot] == "가위":
                     for obj in obstacles:
-                        # [중요] obs_type 속성이 있는지 먼저 확인 (제작대 에러 방지)
                         if hasattr(obj, 'obs_type') and obj.obs_type == "pumpkin":
                             if obj.rect.collidepoint(mouse_pos):
                                 dist = player_pos.distance_to(obj.rect.center)
                                 if dist <= 100:
                                     obj.kill()
-                                    inventory["조각난 호박"] += 1
+                                    inventory["조각된 호박"] += 1
                                     break
                             
             elif event.button == 1:
@@ -743,7 +763,7 @@ while running:
                                     break
     if not show_tutorial:
         keys = pygame.key.get_pressed()
-        player.update(keys, obstacles)
+        player.update(keys, obstacles, endermen)
         
         # 밤에 엔더맨 스폰 로직
         if is_night:
@@ -751,23 +771,15 @@ while running:
             # 300프레임마다 (약 5초마다) 확률적으로 엔더맨 스폰
             if enderman_spawn_counter >= 300:
                 # 엔더맨이 2마리 이하일 때만 스폰
-                if len(endermen) < 2 and random.randint(1, 100) <= 30:  # 30% 확률
+                if len(endermen) < 1 and random.randint(1, 100) <= 30:  # 30% 확률
                     enderman = Enderman()
                     all_sprites_list.add(enderman)
                     endermen.add(enderman)
                 enderman_spawn_counter = 0
             
             # 엔더맨 이동 (플레이어 방향으로)
-            for enderman in endermen:
-                player_pos = pygame.math.Vector2(player.rect.center)
-                enderman_pos = pygame.math.Vector2(enderman.rect.center)
-                direction = (player_pos - enderman_pos)
-                if player.is_wearing_pumpkin:
-                    continue
-                if direction.length() > 0:
-                    direction = direction.normalize()
-                    enderman.rect.x += direction.x * enderman.speed
-                    enderman.rect.y += direction.y * enderman.speed
+            # [수정 완료] 수동 이동 코드를 지우고, 클래스의 update 함수를 호출
+            endermen.update(player)  # <-- 이 한 줄이 핵심입니다!
 
             # 파티클 업데이트 및 소거
             for p in particles[:]:
@@ -785,7 +797,7 @@ while running:
 
     if is_night:
         night_overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-        night_overlay.fill((0, 0, 40, 160)) # 진한 남색 계열로 어둡게 (R, G, B, Alpha)
+        night_overlay.fill((0, 0, 40, 160))
         screen.blit(night_overlay, (0, 0))
         # 엔더맨 파티클 렌더링
         for p in particles:
